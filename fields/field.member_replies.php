@@ -185,9 +185,10 @@
 				sprintf("SELECT `creation_date_gmt` FROM sym_entries WHERE id=%d LIMIT 1", $latest_id)
 			);
 			
-			$reply->{'latest-reply-id'} = $latest_id;
-			$reply->{'latest-reply-date'} = date('Y-m-d', strtotime($latest_date_gmt));
-			$reply->{'latest-reply-time'} = date('H:i', strtotime($latest_date_gmt));
+			$reply->{'latest-reply'} = (object)array();
+			$reply->{'latest-reply'}->{'id'} = $latest_id;
+			$reply->{'latest-reply'}->{'date'} = date('Y-m-d', strtotime($latest_date_gmt));
+			$reply->{'latest-reply'}->{'time'} = date('H:i', strtotime($latest_date_gmt));
 			
 			self::$replies[$entry_id] = $reply;
 			return $reply;
@@ -199,16 +200,25 @@
 			return $reply->{'latest-reply-id'};
 		}
 		
-		// @todo: replace `1` in there queries with a call to Members to get member ID
 		// @todo: output latest child in XML with ID and creation date (for time ago processing)
 		public function appendFormattedElement(&$wrapper, $data, $encode=FALSE, $mode=NULL, $entry_id=NULL){
+			
+			$member_id = Frontend::instance()->Page()->_param['member-id'];
 			
 			$element = new XMLElement($this->get('element_name'), NULL);
 			
 			$reply = $this->getRepliesByParentId($entry_id);
 			
 			foreach($reply as $name => $value) {
-				$element->setAttribute($name, $value);
+				if($name != 'latest-reply') {
+					$element->setAttribute($name, $value);
+				}
+				else {
+					$latest = new XMLElement(__('latest'), $value->{'date'});
+					$latest->setAttribute('id', $value->{'id'});
+					$latest->setAttribute('time', $value->{'time'});
+					$element->appendChild($latest);
+				}
 			}
 			
 			$wrapper->appendChild($element);
@@ -217,9 +227,9 @@
 				// find the last child entry ID that exists
 				
 				// remove any read state for this parent entry
-				Symphony::Database()->query(sprintf("DELETE FROM sym_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
+				Symphony::Database()->query(sprintf("DELETE FROM sym_member_replies WHERE member_id=%d AND entry_id=%d", $member_id, $entry_id));
 				// mark the last child as read
-				Symphony::Database()->query(sprintf("INSERT INTO sym_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
+				Symphony::Database()->query(sprintf("INSERT INTO sym_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", $member_id, $entry_id, $latest_id));
 			}
 		}
 
