@@ -197,7 +197,7 @@
 		// @todo: output list of latest entry IDs
 		public function getParameterPoolValue(Array $data, $entry_id=NULL){
 			$reply = $this->getRepliesByParentId($entry_id);
-			return $reply->{'latest-reply-id'};
+			return $reply->{'latest-reply'}->{'id'};
 		}
 		
 		// @todo: output latest child in XML with ID and creation date (for time ago processing)

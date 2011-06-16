@@ -18,7 +18,7 @@ XML output:
 * `has-read-before` if the user has previously viewed this thread. If they have, and there are unread replies you will want to write "X unread" into your view
 * `total-replies` is the total number of child entries (comments, replies etc)
 * `unread-replies` is the number of these child entries that the member has not read
-* 'latest' represents the latest child entry and contains its creation date
+* `latest` represents the latest child entry and contains its creation date
   * `latest/@id` is the ID of the latest child entry (also included as an output parameter)
   * `latest/@time` is the date of the latest child entry, for "time ago" processing
 
