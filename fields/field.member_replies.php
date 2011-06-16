@@ -170,7 +170,6 @@
 			$wrapper->appendChild($element);
 			
 			if($mode == 'mark as read') {
-				
 				// find the last child entry ID that exists
 				if(count($child_entries) > 0) {
 					$last_read_entry_id = end($child_entries);
