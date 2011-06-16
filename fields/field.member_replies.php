@@ -126,6 +126,13 @@
 		Output:
 	-------------------------------------------------------------------------*/
 	
+		public function fetchIncludableElements() {
+			return array(
+				$this->get('element_name'),
+				$this->get('element_name') . ': mark as read'
+			);
+		}
+		
 		// @todo: replace `1` in there queries with a call to Members to get member ID
 		// @todo: allow another mode to mark all children as read
 		public function appendFormattedElement(&$wrapper, $data, $encode=FALSE, $mode=NULL, $entry_id=NULL){
@@ -134,11 +141,11 @@
 			
 			// for this parent entry, find the ID of the last-read child for this user
 			$last_read_entry_id = Symphony::Database()->fetchVar('last_read_entry_id', 0,
-				sprintf("SELECT `last_read_entry_id` FROM sym_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id)
+				sprintf("SELECT `last_read_entry_id` FROM sym_member_replies WHERE member_id=%d AND entry_id=%d LIMIT 1", 1, $entry_id)
 			);
 			
 			// user has previously read this thread, it's not new, so UI should show unread count
-			if(!$last_read_entry_id) {
+			if(is_null($last_read_entry_id)) {
 				$last_read_entry_id = 0;
 			}
 						
@@ -157,12 +164,13 @@
 			
 			$unread_count = count($unread_entries);
 			
-			$element->setAttribute('new', ($last_read_entry_id > 0) ? 'yes' : 'no');
+			$element->setAttribute('new', ($last_read_entry_id > 0) ? 'no' : 'yes');
 			$element->setAttribute('total-replies', count($child_entries));
 			$element->setAttribute('unread-replies', $unread_count);
 			$wrapper->appendChild($element);
 			
-			if($mode == 'mark-as-read') {
+			if($mode == 'mark as read') {
+				
 				// find the last child entry ID that exists
 				if(count($child_entries) > 0) {
 					$last_read_entry_id = end($child_entries);
@@ -184,9 +192,15 @@
 
 		public function buildSortingSQL(&$joins, &$where, &$sort, $order='ASC'){
 			// join on the related SBL field
-			$joins .= "INNER JOIN `tbl_entries_data_".$this->get('related_sbl_id')."` AS `sbl` ON (`e`.`id` = `sbl`.`relation_id`) ";
+			$joins .= "LEFT JOIN `tbl_entries_data_".$this->get('related_sbl_id')."` AS `sbl` ON (`e`.`id` = `sbl`.`relation_id`) ";
 			// sort by the entry ID, newer entry IDs are higher, so newer rows in the SBL data table indicate newest comments
-			$sort = "GROUP BY `sbl`.`relation_id` ORDER BY MAX(`sbl`.`entry_id`) $order";
+			$sort = "GROUP BY `e`.`id` ORDER BY (
+					CASE WHEN MAX(`sbl`.`entry_id`) IS NULL THEN
+						`e`.`id`
+					ELSE
+						MAX(`sbl`.`entry_id`)
+					END	
+				) $order";
 		}
 
 	}
