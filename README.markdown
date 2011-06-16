@@ -9,7 +9,9 @@ This field works with the Members extension and tracks which entries members hav
 
 XML output:
 
-	<replies has-read-before="no" total-replies="0" unread-replies="0" latest-reply-id="123" latest-reply-date="2011-06-16" latest-reply-time="18:02" />
+	<replies has-read-before="no" total-replies="1" unread-replies="1">
+        <latest id="170" time="19:28">2011-06-16</latest>
+    </replies>
 
 * `has-read-before` if the user has previously viewed this thread. If they have, and there are unread replies you will want to write "X unread" into your view
 * `total-replies` is the total number of child entries (comments, replies etc)
