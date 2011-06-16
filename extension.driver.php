@@ -25,9 +25,11 @@
 				  `entry_id` int(11) default NULL,
 				  `member_id` int(11) default NULL,
 				  `last_read_entry_id` int(11) default NULL,
+				  `subscribed` enum('yes','no') default 'no',
 				  KEY `entry_id` (`entry_id`),
 				  KEY `member_id` (`member_id`),
-				  KEY `last_read_entry_id` (`last_read_entry_id`)
+				  KEY `last_read_entry_id` (`last_read_entry_id`),
+				  KEY `subscribed` (`subscribed`)
 				) ENGINE=MyISAM");
 				
 				Symphony::Database()->query("CREATE TABLE `sym_fields_member_replies` (
