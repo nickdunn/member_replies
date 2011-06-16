@@ -3,7 +3,9 @@
 	if(!defined('__IN_SYMPHONY__')) die('<h2>Symphony Error</h2><p>You cannot directly access this file</p>');
 
 	Class fieldMember_Replies extends Field{
-
+		
+		private static $replies = array();
+		
 	/*-------------------------------------------------------------------------
 		Definition:
 	-------------------------------------------------------------------------*/
@@ -14,6 +16,10 @@
 		}
 		
 		public function isSortable(){
+			return TRUE;
+		}
+		
+		public function allowDatasourceParamOutput(){
 			return TRUE;
 		}
 
@@ -133,11 +139,10 @@
 			);
 		}
 		
-		// @todo: replace `1` in there queries with a call to Members to get member ID
-		// @todo: allow another mode to mark all children as read
-		public function appendFormattedElement(&$wrapper, $data, $encode=FALSE, $mode=NULL, $entry_id=NULL){
+		private function getRepliesByParentId($entry_id) {
+			if(isset(self::$replies[$entry_id])) return self::$replies[$entry_id];
 			
-			$element = new XMLElement($this->get('element_name'), NULL);
+			$reply = (object)array();
 			
 			// for this parent entry, find the ID of the last-read child for this user
 			$last_read_entry_id = Symphony::Database()->fetchVar('last_read_entry_id', 0,
@@ -164,24 +169,57 @@
 			
 			$unread_count = count($unread_entries);
 			
-			$element->setAttribute('new', ($last_read_entry_id > 0) ? 'no' : 'yes');
-			$element->setAttribute('total-replies', count($child_entries));
-			$element->setAttribute('unread-replies', $unread_count);
+			$reply->{'has-read-before'} = ($last_read_entry_id > 0) ? 'yes' : 'no';
+			$reply->{'total-replies'} = count($child_entries);
+			$reply->{'unread-replies'} = $unread_count;
+			
+			if(count($child_entries) > 0) {
+				$latest_id = end($child_entries);
+			}
+			// if no children, set the last-ready to be the parent entry ID itself
+			else {
+				$latest_id = $entry_id;
+			}
+			
+			$latest_date_gmt = Symphony::Database()->fetchVar('creation_date_gmt', 0,
+				sprintf("SELECT `creation_date_gmt` FROM sym_entries WHERE id=%d LIMIT 1", $latest_id)
+			);
+			
+			$reply->{'latest-reply-id'} = $latest_id;
+			$reply->{'latest-reply-date'} = date('Y-m-d', strtotime($latest_date_gmt));
+			$reply->{'latest-reply-time'} = date('H:i', strtotime($latest_date_gmt));
+			
+			self::$replies[$entry_id] = $reply;
+			return $reply;
+		}
+		
+		// @todo: output list of latest entry IDs
+		public function getParameterPoolValue(Array $data, $entry_id=NULL){
+			$reply = $this->getRepliesByParentId($entry_id);
+			return $reply->{'latest-reply-id'};
+		}
+		
+		// @todo: replace `1` in there queries with a call to Members to get member ID
+		// @todo: output latest child in XML with ID and creation date (for time ago processing)
+		public function appendFormattedElement(&$wrapper, $data, $encode=FALSE, $mode=NULL, $entry_id=NULL){
+			
+			$element = new XMLElement($this->get('element_name'), NULL);
+			
+			$reply = $this->getRepliesByParentId($entry_id);
+			
+			foreach($reply as $name => $value) {
+				$element->setAttribute($name, $value);
+			}
+			
 			$wrapper->appendChild($element);
 			
 			if($mode == 'mark as read') {
 				// find the last child entry ID that exists
-				if(count($child_entries) > 0) {
-					$last_read_entry_id = end($child_entries);
-				}
-				// if no children, set the last-ready to be the parent entry ID itself
-				else {
-					$last_read_entry_id = $entry_id;
-				}
+				
 				// remove any read state for this parent entry
 				Symphony::Database()->query(sprintf("DELETE FROM sym_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
 				// mark the last child as read
-				Symphony::Database()->query(sprintf("INSERT INTO sym_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $last_read_entry_id));
+				Symphony::Database()->query(sprintf("INSERT INTO sym_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
 			}
 		}
 
