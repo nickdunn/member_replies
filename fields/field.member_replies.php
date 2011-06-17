@@ -22,6 +22,10 @@
 		public function allowDatasourceParamOutput(){
 			return TRUE;
 		}
+		
+		public function canFilter(){
+			return TRUE;
+		}
 
 	/*-------------------------------------------------------------------------
 		Setup:
@@ -74,18 +78,22 @@
 					);
 				}
 			}
+			
+			$group = new XMLElement('div', NULL, array('class' => 'group'));
 
-			$label = Widget::Label(__('Child Select Box Link'));
+			$label = Widget::Label(__('Reply Select Box Link'));
 			$label->appendChild(
 				Widget::Select('fields['.$this->get('sortorder').'][related_sbl_id]', $options)
 			);
 
 			if(isset($errors['related_sbl_id'])) {
-				$wrapper->appendChild(Widget::wrapFormElementWithError($label, $errors['related_sbl_id']));
+				$group->appendChild(Widget::wrapFormElementWithError($label, $errors['related_sbl_id']));
 			}
 			else {
-				$wrapper->appendChild($label);
+				$group->appendChild($label);
 			}
+			
+			$wrapper->appendChild($group);
 
 		}
 
@@ -146,7 +154,7 @@
 			
 			// for this parent entry, find the ID of the last-read child for this user
 			$last_read_entry_id = Symphony::Database()->fetchVar('last_read_entry_id', 0,
-				sprintf("SELECT `last_read_entry_id` FROM sym_member_replies WHERE member_id=%d AND entry_id=%d LIMIT 1", 1, $entry_id)
+				sprintf("SELECT `last_read_entry_id` FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d LIMIT 1", 1, $entry_id)
 			);
 			
 			// user has previously read this thread, it's not new, so UI should show unread count
@@ -156,7 +164,7 @@
 						
 			$child_entries = Symphony::Database()->fetchCol('entry_id', 
 				sprintf(
-					"SELECT entry_id FROM sym_entries_data_%d WHERE relation_id=%d ORDER BY entry_id ASC",
+					"SELECT entry_id FROM tbl_entries_data_%d WHERE relation_id=%d ORDER BY entry_id ASC",
 					$this->get('related_sbl_id'),
 					$entry_id
 				)
@@ -182,7 +190,7 @@
 			}
 			
 			$latest_date_gmt = Symphony::Database()->fetchVar('creation_date_gmt', 0,
-				sprintf("SELECT `creation_date_gmt` FROM sym_entries WHERE id=%d LIMIT 1", $latest_id)
+				sprintf("SELECT `creation_date_gmt` FROM tbl_entries WHERE id=%d LIMIT 1", $latest_id)
 			);
 			
 			$reply->{'latest-reply-id'} = $latest_id;
@@ -217,9 +225,9 @@
 				// find the last child entry ID that exists
 				
 				// remove any read state for this parent entry
-				Symphony::Database()->query(sprintf("DELETE FROM sym_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
+				Symphony::Database()->query(sprintf("DELETE FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
 				// mark the last child as read
-				Symphony::Database()->query(sprintf("INSERT INTO sym_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
+				Symphony::Database()->query(sprintf("INSERT INTO tbl_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
 			}
 		}
 
@@ -238,6 +246,51 @@
 						MAX(`sbl`.`entry_id`)
 					END	
 				) $order";
+		}
+	
+	/*-------------------------------------------------------------------------
+		Filtering:
+	-------------------------------------------------------------------------*/
+	
+		public function displayDatasourceFilterPanel(&$wrapper, $data=NULL, $errors=NULL, $fieldnamePrefix=NULL, $fieldnamePostfix=NULL){
+			parent::displayDatasourceFilterPanel($wrapper, $data, $errors, $fieldnamePrefix, $fieldnamePostfix);
+			
+			$taglist = new XMLElement('ul');
+			$taglist->setAttribute('class', 'tags');
+			
+			foreach(array('has never read', 'has unread replies') as $tag) {
+				$taglist->appendChild(
+					new XMLElement('li', General::sanitize($tag))
+				);
+			}
+
+			$wrapper->appendChild($taglist);
+		}
+		
+		public function buildDSRetrievalSQL($data, &$joins, &$where, $andOperation=FALSE) {
+			$field_id = $this->get('id');
+			if (!is_array($data)) $data = array($data);
+			
+			$this->_key++;
+			
+			$filter = reset($data);
+			
+			switch($filter) {
+				// has no row in sym_member_replies for entry_id
+				case 'has never read':
+					$where .= " AND `sbl`.`entry_id` IS NOT NULL";
+				break;
+				// has 
+				case 'has unread replies':
+					$where .= " AND `sbl`.`entry_id` IS NOT NULL";
+				break;
+				// member has row for this entry_id in sym_member_replies
+				case 'member is subscribed':
+					$where .= " AND "
+				break;
+			}
+
+			return TRUE;
 		}
 
 	}
