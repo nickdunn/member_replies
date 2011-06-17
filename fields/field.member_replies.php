@@ -33,7 +33,7 @@
 
 		public function createTable(){
 			return Symphony::Database()->query(
-				"CREATE TABLE IF NOT EXISTS `tbl_entries_data_" . $this->get('id') . "` (
+				"CREATE TABLE IF NOT EXISTS `sym_entries_data_" . $this->get('id') . "` (
 					`id` int(11) unsigned NOT NULL auto_increment,
 					`entry_id` int(11) unsigned NOT NULL,
 					`value` varchar(255) DEFAULT NULL,
@@ -118,8 +118,8 @@
 			$fields['field_id'] = $id;
 			$fields['related_sbl_id'] = $this->get('related_sbl_id');
 			
-			Symphony::Database()->query("DELETE FROM `tbl_fields_".$this->handle()."` WHERE `field_id` = '$id'");
-			if(!Symphony::Database()->insert($fields, 'tbl_fields_' . $this->handle())) return FALSE;
+			Symphony::Database()->query("DELETE FROM `sym_fields_".$this->handle()."` WHERE `field_id` = '$id'");
+			if(!Symphony::Database()->insert($fields, 'sym_fields_' . $this->handle())) return FALSE;
 			
 			return TRUE;
 		}
@@ -154,7 +154,7 @@
 			
 			// for this parent entry, find the ID of the last-read child for this user
 			$last_read_entry_id = Symphony::Database()->fetchVar('last_read_entry_id', 0,
-				sprintf("SELECT `last_read_entry_id` FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d LIMIT 1", 1, $entry_id)
+				sprintf("SELECT `last_read_entry_id` FROM sym_member_replies WHERE member_id=%d AND entry_id=%d LIMIT 1", 1, $entry_id)
 			);
 			
 			// user has previously read this thread, it's not new, so UI should show unread count
@@ -164,7 +164,7 @@
 						
 			$child_entries = Symphony::Database()->fetchCol('entry_id', 
 				sprintf(
-					"SELECT entry_id FROM tbl_entries_data_%d WHERE relation_id=%d ORDER BY entry_id ASC",
+					"SELECT entry_id FROM sym_entries_data_%d WHERE relation_id=%d ORDER BY entry_id ASC",
 					$this->get('related_sbl_id'),
 					$entry_id
 				)
@@ -190,7 +190,7 @@
 			}
 			
 			$latest_date_gmt = Symphony::Database()->fetchVar('creation_date_gmt', 0,
-				sprintf("SELECT `creation_date_gmt` FROM tbl_entries WHERE id=%d LIMIT 1", $latest_id)
+				sprintf("SELECT `creation_date_gmt` FROM sym_entries WHERE id=%d LIMIT 1", $latest_id)
 			);
 			
 			$reply->{'latest-reply-id'} = $latest_id;
@@ -225,9 +225,9 @@
 				// find the last child entry ID that exists
 				
 				// remove any read state for this parent entry
-				Symphony::Database()->query(sprintf("DELETE FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
+				Symphony::Database()->query(sprintf("DELETE FROM sym_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
 				// mark the last child as read
-				Symphony::Database()->query(sprintf("INSERT INTO tbl_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
+				Symphony::Database()->query(sprintf("INSERT INTO sym_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
 			}
 		}
 
@@ -237,7 +237,7 @@
 
 		public function buildSortingSQL(&$joins, &$where, &$sort, $order='ASC'){
 			// join on the related SBL field
-			$joins .= "LEFT JOIN `tbl_entries_data_".$this->get('related_sbl_id')."` AS `sbl` ON (`e`.`id` = `sbl`.`relation_id`) ";
+			$joins .= "LEFT JOIN `sym_entries_data_".$this->get('related_sbl_id')."` AS `sbl` ON (`e`.`id` = `sbl`.`relation_id`) ";
 			// sort by the entry ID, newer entry IDs are higher, so newer rows in the SBL data table indicate newest comments
 			$sort = "GROUP BY `e`.`id` ORDER BY (
 					CASE WHEN MAX(`sbl`.`entry_id`) IS NULL THEN
