@@ -5,6 +5,7 @@
 	Class fieldMember_Replies extends Field{
 		
 		private static $replies = array();
+		private static $is_filtering = FALSE;
 		
 	/*-------------------------------------------------------------------------
 		Definition:
@@ -33,7 +34,7 @@
 
 		public function createTable(){
 			return Symphony::Database()->query(
-				"CREATE TABLE IF NOT EXISTS `sym_entries_data_" . $this->get('id') . "` (
+				"CREATE TABLE IF NOT EXISTS `tbl_entries_data_" . $this->get('id') . "` (
 					`id` int(11) unsigned NOT NULL auto_increment,
 					`entry_id` int(11) unsigned NOT NULL,
 					`value` varchar(255) DEFAULT NULL,
@@ -118,8 +119,8 @@
 			$fields['field_id'] = $id;
 			$fields['related_sbl_id'] = $this->get('related_sbl_id');
 			
-			Symphony::Database()->query("DELETE FROM `sym_fields_".$this->handle()."` WHERE `field_id` = '$id'");
-			if(!Symphony::Database()->insert($fields, 'sym_fields_' . $this->handle())) return FALSE;
+			Symphony::Database()->query("DELETE FROM `tbl_fields_".$this->handle()."` WHERE `field_id` = '$id'");
+			if(!Symphony::Database()->insert($fields, 'tbl_fields_' . $this->handle())) return FALSE;
 			
 			return TRUE;
 		}
@@ -154,7 +155,7 @@
 			
 			// for this parent entry, find the ID of the last-read child for this user
 			$last_read_entry_id = Symphony::Database()->fetchVar('last_read_entry_id', 0,
-				sprintf("SELECT `last_read_entry_id` FROM sym_member_replies WHERE member_id=%d AND entry_id=%d LIMIT 1", 1, $entry_id)
+				sprintf("SELECT `last_read_entry_id` FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d LIMIT 1", 1, $entry_id)
 			);
 			
 			// user has previously read this thread, it's not new, so UI should show unread count
@@ -164,7 +165,7 @@
 						
 			$child_entries = Symphony::Database()->fetchCol('entry_id', 
 				sprintf(
-					"SELECT entry_id FROM sym_entries_data_%d WHERE relation_id=%d ORDER BY entry_id ASC",
+					"SELECT entry_id FROM tbl_entries_data_%d WHERE relation_id=%d ORDER BY entry_id ASC",
 					$this->get('related_sbl_id'),
 					$entry_id
 				)
@@ -190,7 +191,7 @@
 			}
 			
 			$latest_date_gmt = Symphony::Database()->fetchVar('creation_date_gmt', 0,
-				sprintf("SELECT `creation_date_gmt` FROM sym_entries WHERE id=%d LIMIT 1", $latest_id)
+				sprintf("SELECT `creation_date_gmt` FROM tbl_entries WHERE id=%d LIMIT 1", $latest_id)
 			);
 			
 			$reply->{'latest-reply-id'} = $latest_id;
@@ -225,9 +226,9 @@
 				// find the last child entry ID that exists
 				
 				// remove any read state for this parent entry
-				Symphony::Database()->query(sprintf("DELETE FROM sym_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
+				Symphony::Database()->query(sprintf("DELETE FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
 				// mark the last child as read
-				Symphony::Database()->query(sprintf("INSERT INTO sym_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
+				Symphony::Database()->query(sprintf("INSERT INTO tbl_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
 			}
 		}
 
@@ -237,14 +238,49 @@
 
 		public function buildSortingSQL(&$joins, &$where, &$sort, $order='ASC'){
 			// join on the related SBL field
-			$joins .= "LEFT JOIN `sym_entries_data_".$this->get('related_sbl_id')."` AS `sbl` ON (`e`.`id` = `sbl`.`relation_id`) ";
+			$joins .= "LEFT JOIN `tbl_entries_data_".$this->get('related_sbl_id')."` AS `sbl` ON (`e`.`id` = `sbl`.`relation_id`) ";
+			
 			// sort by the entry ID, newer entry IDs are higher, so newer rows in the SBL data table indicate newest comments
-			$sort = "GROUP BY `e`.`id` ORDER BY (
-					CASE WHEN MAX(`sbl`.`entry_id`) IS NULL THEN
-						`e`.`id`
-					ELSE
+			$sort = " GROUP BY `e`.`id` ";
+			
+			if(self::$is_filtering) {
+				// if the field is filtering for unread items only, filter there from the results with a HAVING
+				// clause, which runs after the WHEREs have finished. The HAVING checks
+				// a) brand new threads (regardless of # replies) that the member hasn't yet seen
+				// b) existing threads a member has seen, but have new replies that have not been seen
+				$sort .= sprintf(" HAVING
+					(
+							-- member has never seen the thread
+							(SELECT `entry_id` FROM `tbl_member_replies` WHERE `entry_id` = `e`.`id` AND `member_id`=%1\$d LIMIT 1) IS NULL
+							-- latest child entry ID is larger than the last_seen
+							OR
+							(
+								(
+									SELECT MAX(`entry_id`)
+									FROM `tbl_entries_data_%2\$d`
+									WHERE `tbl_entries_data_%2\$d`.`relation_id` = `e`.`id`
+									GROUP BY `tbl_entries_data_%2\$d`.`relation_id`
+								)
+								> (SELECT `last_read_entry_id` FROM `tbl_member_replies` WHERE `entry_id` = `e`.`id` AND `member_id`=%1\$d LIMIT 1)
+							)
+					)", 1, $this->get('related_sbl_id'));
+			}
+			
+			$sort .= " ORDER BY (
+					CASE
+					-- member has never seen the thread, but it has replies, use latest reply ID
+					WHEN `replies`.`entry_id` IS NULL AND MAX(`sbl`.`entry_id`) IS NOT NULL THEN
 						MAX(`sbl`.`entry_id`)
-					END	
+					-- member has never seen the thread, it has no replies, so use parent ID
+					WHEN `replies`.`entry_id` IS NULL AND MAX(`sbl`.`entry_id`) IS NULL THEN
+						`e`.`id`
+					-- member has read this thread, and latest child is newer than the last read
+					WHEN MAX(`sbl`.`entry_id`) > `replies`.`last_read_entry_id` THEN
+					 	MAX(`sbl`.`entry_id`)
+					-- member has read this thread, they are up to date
+					ELSE
+						`replies`.`last_read_entry_id`
+					END
 				) $order";
 		}
 	
@@ -258,7 +294,7 @@
 			$taglist = new XMLElement('ul');
 			$taglist->setAttribute('class', 'tags');
 			
-			foreach(array('has never read', 'has unread replies') as $tag) {
+			foreach(array('unread') as $tag) {
 				$taglist->appendChild(
 					new XMLElement('li', General::sanitize($tag))
 				);
@@ -267,26 +303,26 @@
 			$wrapper->appendChild($taglist);
 		}
 		
+		/*
+			@BUG: when filtering the pagination will be INCORRECT. This is because I have to cram the HAVING
+			clause into buildSortingSQL() method to insert it to the correct place in the query. However the
+			EntryManager::fetchCount() doesn't take the field's sort into account (why should it?) so the 
+			HAVING clause isn't taken into account when counting results. So until there's a resolution, the
+			unread filter on this field should not allow pagination (use a DS limit to, say, 100 entries, hide
+			any pagination from the UI, and count the number of <entry> elements to replicate @total-entries)
+		*/
 		public function buildDSRetrievalSQL($data, &$joins, &$where, $andOperation=FALSE) {
+			
 			$field_id = $this->get('id');
 			if (!is_array($data)) $data = array($data);
 			
+			$filter = reset($data);
 			$this->_key++;
 			
-			$filter = reset($data);
-			
 			switch($filter) {
-				// has no row in sym_member_replies for entry_id
-				case 'has never read':
-					$where .= " AND `sbl`.`entry_id` IS NOT NULL";
-				break;
-				// has 
-				case 'has unread replies':
-					$where .= " AND `sbl`.`entry_id` IS NOT NULL";
-				break;
-				// member has row for this entry_id in sym_member_replies
-				case 'member is subscribed':
-					$where .= " AND "
+				case 'unread':
+					self::$is_filtering = TRUE;
+					$joins .= " LEFT JOIN `tbl_member_replies` AS `replies` ON (`e`.`id` = `replies`.`entry_id` AND `replies`.`member_id` = 1) ";
 				break;
 			}
 
