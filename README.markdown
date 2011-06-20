@@ -28,3 +28,9 @@ The field also provides a "mark as read" data source output mode. Choose this op
 2. Enable it by selecting the "Member Replies", choose Enable from the with-selected menu, then click Apply.
 3. Add a Member Replies field to your discussion "parent" section (e.g. to your Articles section, if a Comments section contains replies)
 4. Select the Selectbox Link field in the "child" section (e.g. an "Article" field in the Comments section) when configuring the field
+
+## Known limitations
+
+To filter the field you **must** be sorting by the field also. It is a requirement of the SQL joins.
+
+When filtering by the field, **pagination does not work**. The SQL required for filtering entries is not applied to the SQL that performs the pagination counting, so the pagination numbering will be incorrect. It is advisable that if you filter by `unread` then you also disable pagination. Perhaps just show the latest 25, 50 or 100 entries. Sorry.
