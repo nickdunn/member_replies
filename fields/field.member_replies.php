@@ -82,7 +82,7 @@
 			
 			$group = new XMLElement('div', NULL, array('class' => 'group'));
 
-			$label = Widget::Label(__('Reply Select Box Link'));
+			$label = Widget::Label(__('Child Select Box Link'));
 			$label->appendChild(
 				Widget::Select('fields['.$this->get('sortorder').'][related_sbl_id]', $options)
 			);
@@ -194,9 +194,10 @@
 				sprintf("SELECT `creation_date_gmt` FROM tbl_entries WHERE id=%d LIMIT 1", $latest_id)
 			);
 			
-			$reply->{'latest-reply-id'} = $latest_id;
-			$reply->{'latest-reply-date'} = date('Y-m-d', strtotime($latest_date_gmt));
-			$reply->{'latest-reply-time'} = date('H:i', strtotime($latest_date_gmt));
+			$reply->{'latest-reply'} = (object)array();
+			$reply->{'latest-reply'}->{'id'} = $latest_id;
+			$reply->{'latest-reply'}->{'date'} = date('Y-m-d', strtotime($latest_date_gmt));
+			$reply->{'latest-reply'}->{'time'} = date('H:i', strtotime($latest_date_gmt));
 			
 			self::$replies[$entry_id] = $reply;
 			return $reply;
@@ -205,19 +206,29 @@
 		// @todo: output list of latest entry IDs
 		public function getParameterPoolValue(Array $data, $entry_id=NULL){
 			$reply = $this->getRepliesByParentId($entry_id);
-			return $reply->{'latest-reply-id'};
+			return $reply->{'latest-reply'}->{'id'};
 		}
 		
 		// @todo: replace `1` in there queries with a call to Members to get member ID
 		// @todo: output latest child in XML with ID and creation date (for time ago processing)
 		public function appendFormattedElement(&$wrapper, $data, $encode=FALSE, $mode=NULL, $entry_id=NULL){
 			
+			$member_id = Frontend::instance()->Page()->_param['member-id'];
+			
 			$element = new XMLElement($this->get('element_name'), NULL);
 			
 			$reply = $this->getRepliesByParentId($entry_id);
 			
 			foreach($reply as $name => $value) {
-				$element->setAttribute($name, $value);
+				if($name != 'latest-reply') {
+					$element->setAttribute($name, $value);
+				}
+				else {
+					$latest = new XMLElement(__('latest'), $value->{'date'});
+					$latest->setAttribute('id', $value->{'id'});
+					$latest->setAttribute('time', $value->{'time'});
+					$element->appendChild($latest);
+				}
 			}
 			
 			$wrapper->appendChild($element);
@@ -226,9 +237,9 @@
 				// find the last child entry ID that exists
 				
 				// remove any read state for this parent entry
-				Symphony::Database()->query(sprintf("DELETE FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d", 1, $entry_id));
+				Symphony::Database()->query(sprintf("DELETE FROM tbl_member_replies WHERE member_id=%d AND entry_id=%d", $member_id, $entry_id));
 				// mark the last child as read
-				Symphony::Database()->query(sprintf("INSERT INTO tbl_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", 1, $entry_id, $latest_id));
+				Symphony::Database()->query(sprintf("INSERT INTO tbl_member_replies (member_id, entry_id, last_read_entry_id) VALUES(%d,%d,%d)", $member_id, $entry_id, $latest_id));
 			}
 		}
 
@@ -236,7 +247,10 @@
 		Sorting:
 	-------------------------------------------------------------------------*/
 
-		public function buildSortingSQL(&$joins, &$where, &$sort, $order='ASC'){
+		public function buildSortingSQL(&$joins, &$where, &$sort, $order='ASC') {
+			
+			$member_id = Frontend::instance()->Page()->_param['member-id'];
+			
 			// join on the related SBL field
 			$joins .= "LEFT JOIN `tbl_entries_data_".$this->get('related_sbl_id')."` AS `sbl` ON (`e`.`id` = `sbl`.`relation_id`) ";
 			
@@ -263,7 +277,7 @@
 								)
 								> (SELECT `last_read_entry_id` FROM `tbl_member_replies` WHERE `entry_id` = `e`.`id` AND `member_id`=%1\$d LIMIT 1)
 							)
-					)", 1, $this->get('related_sbl_id'));
+					)", $member_id, $this->get('related_sbl_id'));
 			}
 			
 			$sort .= " ORDER BY (
@@ -316,13 +330,15 @@
 			$field_id = $this->get('id');
 			if (!is_array($data)) $data = array($data);
 			
+			$member_id = Frontend::instance()->Page()->_param['member-id'];
+			
 			$filter = reset($data);
 			$this->_key++;
 			
 			switch($filter) {
 				case 'unread':
 					self::$is_filtering = TRUE;
-					$joins .= " LEFT JOIN `tbl_member_replies` AS `replies` ON (`e`.`id` = `replies`.`entry_id` AND `replies`.`member_id` = 1) ";
+					$joins .= sprintf(" LEFT JOIN `tbl_member_replies` AS `replies` ON (`e`.`id` = `replies`.`entry_id` AND `replies`.`member_id` = %d) ", $member_id);
 				break;
 			}
 
